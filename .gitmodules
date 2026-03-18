@@ -1,6 +1,6 @@
 [submodule "alfredv"]
 	path = alfredv
 	url = https://github.com/azizhanazizoglu/AlfredV.git
-[submodule "products/shopify-product"]
-	path = products/shopify-product
-	url = https://github.com/azizhanazizoglu/ShopifyProduct.git
+[submodule "ShopifyLightning"]
+	path = ShopifyLightning
+	url = https://github.com/azizhanazizoglu/ShopifyLightning.git

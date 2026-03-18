@@ -6,13 +6,14 @@ Orchestrates AlfredV and product repos via Git submodules.
 
 ```
 umbrella/
-├── alfredv/                    # AlfredV submodule (agents, MCP, dashboard, hooks)
-├── products/
-│   └── shopify-product/        # ShopifyProduct submodule (first product)
+├── alfredv/            # AlfredV submodule (agents, MCP, dashboard, hooks)
+├── ShopifyLightning/   # ShopifyLightning submodule (first product)
 ├── Makefile
 ├── docker-compose.yml
 └── .github/workflows/integration.yml
 ```
+
+Each product sits at the umbrella root alongside `alfredv/` — not nested inside a subdirectory.
 
 ## Quick Start
 
@@ -27,7 +28,7 @@ make setup
 Every product repo must follow this layout:
 
 ```
-my-product/
+MyProduct/
 ├── .alfred/
 │   ├── project.yaml        # AlfredV product descriptor (required)
 │   └── README.md
@@ -50,21 +51,25 @@ my-product/
 ## Adding a New Product
 
 ```bash
-# 1. Create and scaffold the product repo
-mkdir my-product && cd my-product
+# 1. Create standalone repo (GitHub + local folder)
+mkdir ~/Documents/Playground/MyProduct && cd ~/Documents/Playground/MyProduct
 git init && git checkout -b main
-# ... create .alfred/project.yaml, agent-docs/, src/, tests/, config/, pyproject.toml
+# scaffold: .alfred/project.yaml, agent-docs/, src/, tests/, config/, pyproject.toml
+git remote add origin https://github.com/you/MyProduct.git
+git push -u origin main
 
-# 2. Add as submodule in umbrella
+# 2. Add as submodule at umbrella root (same level as alfredv/)
 cd /path/to/umbrella
-git submodule add https://github.com/you/my-product.git products/my-product
+git submodule add https://github.com/you/MyProduct.git MyProduct
+git commit -m "feat: add MyProduct submodule"
+git push
 
 # 3. Activate the product for AlfredV
-alfred use /path/to/my-product
+alfred use ~/Documents/Playground/MyProduct
 alfred status
 ```
 
-The `.alfred/project.yaml` descriptor tells AlfredV the product's name, paths, Neo4j/Qdrant config, and GitHub repo for issue tracking. See [ShopifyProduct](products/shopify-product/.alfred/README.md) for the full schema.
+The `.alfred/project.yaml` descriptor tells AlfredV the product's name, paths, Neo4j/Qdrant config, and GitHub repo. See [ShopifyLightning/.alfred/README.md](ShopifyLightning/.alfred/README.md) for the full schema.
 
 ## Commands
 
