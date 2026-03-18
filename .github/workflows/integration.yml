@@ -1,0 +1,48 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  alfredv-tests:
+    name: AlfredV Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install AlfredV deps
+        run: cd alfredv && uv sync
+
+      - name: Run AlfredV tests
+        run: cd alfredv && uv run python -m pytest tests/ -v
+
+  # Uncomment and configure when a product submodule is added:
+  # product-tests:
+  #   name: Product Tests
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       product: [my-product]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #
+  #     - uses: astral-sh/setup-uv@v3
+  #       with:
+  #         version: "latest"
+  #
+  #     - name: Install product deps
+  #       run: cd products/${{ matrix.product }} && uv sync
+  #
+  #     - name: Run product tests
+  #       run: cd products/${{ matrix.product }} && uv run python -m pytest tests/ -v

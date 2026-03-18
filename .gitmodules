@@ -1,0 +1,3 @@
+[submodule "alfredv"]
+	path = alfredv
+	url = https://github.com/azizhanazizoglu/AlfredV.git
