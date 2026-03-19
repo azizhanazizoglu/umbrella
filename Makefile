@@ -26,13 +26,13 @@ ifdef PRODUCT
 endif
 
 services:
-	docker compose up -d
+	cd alfredv && docker compose up -d
 
 services-dedicated:
-	docker compose --profile dedicated up -d
+	cd alfredv && docker compose --profile dedicated up -d
 
 services-down:
-	docker compose --profile dedicated down
+	cd alfredv && docker compose --profile dedicated down
 
 smoke-test:
 	cd alfredv && uv run python -m pytest ../smoke-tests/ -v

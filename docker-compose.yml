@@ -1,89 +1,9 @@
-services:
-  # ── Shared instances (always running) ──────────────────────────────
-  neo4j:
-    image: neo4j:community
-    user: "1000:1000"
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    volumes:
-      - ./data/neo4j:/data
-    environment:
-      NEO4J_AUTH: neo4j/devpassword
-      NEO4J_server_memory_heap_max__size: 8g
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+# Umbrella docker-compose — integration testing only.
+# For day-to-day development, use: cd alfredv && docker compose up -d
+#
+# This file exists for multi-product integration tests that need
+# the umbrella directory structure (submodule paths, smoke-tests).
+# It delegates to AlfredV's compose for the actual service definitions.
 
-  qdrant:
-    image: qdrant/qdrant
-    user: "1000:1000"
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - ./data/qdrant:/qdrant/storage
-      - ./data/qdrant-snapshots:/qdrant/snapshots
-    healthcheck:
-      test: ["CMD-SHELL", "grep -l qdrant /proc/[0-9]*/status > /dev/null 2>&1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  dashboard:
-    build: ./alfredv/dashboard
-    ports:
-      - "8080:8080"
-    depends_on:
-      neo4j:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-    environment:
-      NEO4J_URL: "http://neo4j:7474"
-      NEO4J_USER: "neo4j"
-      NEO4J_PASSWORD: "devpassword"
-      QDRANT_URL: "http://qdrant:6333"
-      OLLAMA_URL: "http://172.18.0.1:11434"
-
-  # ── Dedicated product instances (E3 hybrid — opt-in via profile) ───
-  # Start with: docker compose --profile dedicated up -d
-  # Then set in product's .alfred/project.yaml:
-  #   neo4j_uri: "bolt://localhost:7688"
-  #   qdrant_host: "localhost"
-  #   qdrant_port: 6335
-  neo4j-product:
-    image: neo4j:community
-    user: "1000:1000"
-    profiles: ["dedicated"]
-    ports:
-      - "7475:7474"
-      - "7688:7687"
-    volumes:
-      - ./data/neo4j-product:/data
-    environment:
-      NEO4J_AUTH: neo4j/devpassword
-      NEO4J_server_memory_heap_max__size: 4g
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  qdrant-product:
-    image: qdrant/qdrant
-    user: "1000:1000"
-    profiles: ["dedicated"]
-    ports:
-      - "6335:6333"
-      - "6336:6334"
-    volumes:
-      - ./data/qdrant-product:/qdrant/storage
-      - ./data/qdrant-product-snapshots:/qdrant/snapshots
-    healthcheck:
-      test: ["CMD-SHELL", "grep -l qdrant /proc/[0-9]*/status > /dev/null 2>&1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+include:
+  - path: alfredv/docker-compose.yml
