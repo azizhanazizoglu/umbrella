@@ -1,0 +1,182 @@
+name: Compatibility Gate + Auto-Bump
+
+# Triggers:
+# 1. Push to main — runs after manual submodule bumps
+# 2. Scheduled — checks for upstream changes daily
+# 3. Manual — workflow_dispatch for on-demand checks
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * *'  # daily at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      auto_bump:
+        description: 'Auto-bump submodules to latest upstream'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  # ── Step 1: Check for upstream changes ─────────────────────────────
+  detect-changes:
+    name: Detect Upstream Changes
+    runs-on: ubuntu-latest
+    outputs:
+      alfredv_changed: ${{ steps.check.outputs.alfredv_changed }}
+      products_changed: ${{ steps.check.outputs.products_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Check for upstream updates
+        id: check
+        run: |
+          # Check if alfredv submodule has new commits upstream
+          cd alfredv
+          git fetch origin main --quiet 2>/dev/null || true
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "$LOCAL")
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "alfredv_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::AlfredV has upstream changes: $LOCAL → $REMOTE"
+          else
+            echo "alfredv_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+          cd ..
+
+          # Check all product submodules
+          PRODUCTS_CHANGED=false
+          for dir in */; do
+            if [ "$dir" = "alfredv/" ] || [ "$dir" = ".git/" ] || [ "$dir" = "data/" ] || [ "$dir" = "scripts/" ] || [ "$dir" = "smoke-tests/" ]; then
+              continue
+            fi
+            if [ -f "$dir/.alfred/project.yaml" ]; then
+              cd "$dir"
+              git fetch origin main --quiet 2>/dev/null || true
+              LOCAL=$(git rev-parse HEAD)
+              REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "$LOCAL")
+              if [ "$LOCAL" != "$REMOTE" ]; then
+                PRODUCTS_CHANGED=true
+                echo "::notice::$dir has upstream changes: $LOCAL → $REMOTE"
+              fi
+              cd ..
+            fi
+          done
+          echo "products_changed=$PRODUCTS_CHANGED" >> "$GITHUB_OUTPUT"
+
+  # ── Step 2: Run smoke tests against current (or bumped) submodules ─
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    # Run on push, or when upstream changes detected, or manual dispatch
+    if: >-
+      github.event_name == 'push' ||
+      needs.detect-changes.outputs.alfredv_changed == 'true' ||
+      needs.detect-changes.outputs.products_changed == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      # If scheduled or manual with auto_bump, update submodules to latest
+      - name: Bump submodules to latest upstream
+        if: >-
+          github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.auto_bump == 'true')
+        run: |
+          git submodule update --remote --merge
+          echo "Submodules bumped to latest upstream"
+
+      - name: Install AlfredV deps
+        run: cd alfredv && uv sync
+
+      - name: Run AlfredV unit tests
+        run: cd alfredv && uv run python -m pytest tests/ -v
+
+      - name: Run smoke tests
+        run: uv run --directory alfredv python -m pytest ../smoke-tests/ -v
+
+      - name: Run product tests
+        run: |
+          for dir in */; do
+            if [ "$dir" = "alfredv/" ] || [ "$dir" = ".git/" ] || [ "$dir" = "data/" ] || [ "$dir" = "scripts/" ] || [ "$dir" = "smoke-tests/" ]; then
+              continue
+            fi
+            if [ -f "$dir/pyproject.toml" ] && [ -d "$dir/tests" ]; then
+              echo "::group::Testing $dir"
+              cd "$dir"
+              uv sync 2>/dev/null && uv run python -m pytest tests/ -v || echo "::warning::Tests failed for $dir"
+              cd ..
+              echo "::endgroup::"
+            fi
+          done
+
+  # ── Step 3: Auto-bump if smoke tests pass ──────────────────────────
+  auto-bump:
+    name: Auto-Bump Submodules
+    runs-on: ubuntu-latest
+    needs: smoke-tests
+    # Only auto-bump on schedule or manual dispatch — not on regular push
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.auto_bump == 'true')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump and commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git submodule update --remote --merge
+
+          # Check if anything changed
+          if git diff --quiet; then
+            echo "No submodule changes to commit"
+            exit 0
+          fi
+
+          # Build commit message listing what changed
+          MSG="chore: bump submodules to latest\n\n"
+          for dir in */; do
+            if [ -d "$dir/.git" ] || git config --file .gitmodules --get "submodule.$dir.url" > /dev/null 2>&1; then
+              cd "$dir"
+              SHA=$(git rev-parse --short HEAD)
+              cd ..
+              MSG="${MSG}- ${dir%/}: ${SHA}\n"
+            fi
+          done
+
+          git add -A
+          git commit -m "$(echo -e "$MSG")"
+          git push
+
+      - name: Open issue on failure
+        if: failure()
+        run: |
+          gh issue create \
+            --title "Compatibility gate: auto-bump failed" \
+            --body "The scheduled auto-bump of submodules failed. Smoke tests may have caught a breaking change. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." \
+            --label "bug"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,7 @@
 PRODUCT ?=
+PRODUCT_PATH ?=
 
-.PHONY: setup test-alfredv test-product lint services services-down integration
+.PHONY: setup test-alfredv test-product smoke-test lint services services-down services-dedicated integration export-product import-product
 
 setup:
 	git submodule update --init --recursive
@@ -27,13 +28,28 @@ endif
 services:
 	docker compose up -d
 
-services-down:
-	docker compose down
+services-dedicated:
+	docker compose --profile dedicated up -d
 
-integration:
+services-down:
+	docker compose --profile dedicated down
+
+smoke-test:
+	cd alfredv && uv run python -m pytest ../smoke-tests/ -v
+
+integration: test-alfredv smoke-test
 ifdef PRODUCT
 	uv run python -m pytest tests/integration/ -v --product=$(PRODUCT)
-else
-	@echo "No PRODUCT set — skipping product integration tests"
-	@echo "Usage: make integration PRODUCT=my-product"
 endif
+
+export-product:
+ifndef PRODUCT_PATH
+	$(error PRODUCT_PATH is not set. Usage: make export-product PRODUCT_PATH=/path/to/product)
+endif
+	./scripts/export-product.sh $(PRODUCT_PATH)
+
+import-product:
+ifndef PRODUCT_PATH
+	$(error PRODUCT_PATH is not set. Usage: make import-product PRODUCT_PATH=/path/to/product)
+endif
+	./scripts/import-product.sh $(PRODUCT_PATH)
